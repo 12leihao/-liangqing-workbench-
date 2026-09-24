@@ -3,6 +3,7 @@ admin_secret.local.txt
 admin.local.html
 mqtt_config.json
 purge_sensitive_once.py
+migrate_to_emqx_once.py
 内测上线操作清单.md
 
 # 备份与历史快照（本地保留）

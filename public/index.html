@@ -1731,7 +1731,10 @@ main { max-width: 1600px; margin: 0 auto; padding: 36px 48px 80px; }
 
 <script>
 // ===== MQTT 配置 =====
-const MQTT_BROKER = "wss://broker.emqx.io:8084/mqtt";
+// EMQX Cloud Serverless（私有部署，强制鉴权；原公共 broker 已停用）
+const MQTT_BROKER = "wss://q86a7811.ala.asia-southeast1.emqxsl.com:8084/mqtt";
+const MQTT_USERNAME = "liangqing_web";
+const MQTT_PASSWORD = "123456789lyyLYYLyy!";
 const ANNO_TOPIC = "liangqing-art-workbench/v2/annotations";
 const ENTRY_TOPIC = "liangqing-art-workbench/v2/entries";
 const ACCOUNT_TOPIC = "liangqing-art-workbench/v2/accounts";
@@ -2322,6 +2325,8 @@ function initMQTT() {
   try {
     mqttClient = mqtt.connect(MQTT_BROKER, {
       clientId: "liangqing_" + Math.random().toString(16).substr(2, 8),
+      username: MQTT_USERNAME,
+      password: MQTT_PASSWORD,
       clean: true,
       connectTimeout: 8000,
       reconnectPeriod: 5000,
