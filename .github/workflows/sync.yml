@@ -1,0 +1,72 @@
+name: MQTT sync and deploy
+
+on:
+  schedule:
+    - cron: "0 */2 * * *"  # 每 2 小时（UTC），GitHub Actions 定时任务
+  workflow_dispatch: {}    # 支持手动触发
+
+permissions: {}
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install paho-mqtt
+        run: pip install paho-mqtt
+
+      - name: Run MQTT sync
+        env:
+          # 在仓库 Settings → Secrets and variables → Actions 中配置：
+          # MQTT_HOST   例如 xxx.EMQX Cloud Serverless 地址
+          # MQTT_PORT   例如 8883
+          # MQTT_USER   同步专用账号用户名
+          # MQTT_PASS   同步专用账号密码
+          MQTT_HOST: ${{ secrets.MQTT_HOST }}
+          MQTT_PORT: ${{ secrets.MQTT_PORT }}
+          MQTT_USER: ${{ secrets.MQTT_USER }}
+          MQTT_PASS: ${{ secrets.MQTT_PASS }}
+        run: python sync_entries.py
+
+      - name: Commit updated entries.json
+        run: |
+          git config user.name "sync-bot"
+          git config user.email "actions@github.com"
+          git add public/entries.json
+          git diff --cached --quiet || git commit -m "sync: entries.json from MQTT $(date -u +'%Y-%m-%d %H:%M')"
+          git push
+
+  deploy:
+    needs: sync
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: "public"
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
