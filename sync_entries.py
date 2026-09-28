@@ -25,11 +25,18 @@ import paho.mqtt.client as mqtt
 
 
 def load_mqtt_config():
-    """加载 MQTT 连接配置：环境变量 > mqtt_config.json > 默认公共 broker"""
+    """加载 MQTT 连接配置：环境变量 > mqtt_config.json
+
+    不再静默回落到公共 broker。两处都没配到 host 时直接报错退出（exit 2）：
+    公共 broker 的 retained 会被清理，静默回落会连到一个空 broker、收集 0 条、
+    保留旧数据并以 0 退出，把"同步失败"伪装成"同步成功"，
+    导致 GitHub Actions 一片绿却漏采所有新投稿。
+    """
     host = os.environ.get("MQTT_HOST", "")
     port = os.environ.get("MQTT_PORT", "")
     user = os.environ.get("MQTT_USER", "")
     password = os.environ.get("MQTT_PASS", "")
+    source = "环境变量"
 
     if not host:
         cfg_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mqtt_config.json")
@@ -41,14 +48,24 @@ def load_mqtt_config():
                 port = cfg.get("port", "")
                 user = cfg.get("username", "")
                 password = cfg.get("password", "")
+                source = "mqtt_config.json"
             except Exception as e:
                 print(f"Warning: failed to read {cfg_path}: {e}")
 
+    if not host:
+        print("ERROR: 未找到 MQTT broker 配置，拒绝回落到公共 broker。")
+        print("  需要以下任一来源：")
+        print("    1) 环境变量 MQTT_HOST / MQTT_PORT / MQTT_USER / MQTT_PASS")
+        print("       GitHub Actions: Settings → Secrets and variables → Actions")
+        print("    2) 脚本同目录 mqtt_config.json（本地运行用）")
+        sys.exit(2)
+
     return {
-        "host": host or "broker.emqx.io",
+        "host": host,
         "port": int(port or 8883),
         "username": user,
         "password": password,
+        "source": source,
     }
 
 
@@ -57,6 +74,7 @@ MQTT_HOST = MQTT_CONF["host"]
 MQTT_PORT = MQTT_CONF["port"]
 MQTT_USER = MQTT_CONF["username"]
 MQTT_PASS = MQTT_CONF["password"]
+MQTT_CONF_SOURCE = MQTT_CONF["source"]
 MQTT_KEEPALIVE = 30
 
 ENTRY_TOPIC = "liangqing-art-workbench/v2/entries"
@@ -82,10 +100,19 @@ collected = {
 
 message_received = False
 last_message_time = 0
+connect_rc = None  # 记录连接结果码，用于区分"鉴权失败"与"确实没数据"
 
 
 def on_connect(client, userdata, flags, rc):
-    print(f"MQTT connected, subscribing to topics...")
+    global connect_rc
+    connect_rc = rc
+    if rc != 0:
+        # rc=4/5 通常是用户名口令错误或未授权。必须显式报错：
+        # 否则脚本会以 0 条数据继续、保留旧 entries.json 并以 0 退出，
+        # 让 GitHub Actions 显示成功，掩盖凭据失效。
+        print(f"ERROR: MQTT 连接失败 rc={rc}（4=用户名/口令无效，5=未授权）")
+        return
+    print("MQTT connected, subscribing to topics...")
     client.subscribe(ENTRY_TOPIC + "/#", qos=0)
     client.subscribe(ANNO_TOPIC + "/#", qos=0)
     client.subscribe(CAT_RENAME_TOPIC, qos=0)
@@ -234,7 +261,7 @@ def merge_data(existing):
 
 def main():
     print(f"=== MQTT Sync Script ===")
-    print(f"Broker: {MQTT_HOST}:{MQTT_PORT}")
+    print(f"Broker: {MQTT_HOST}:{MQTT_PORT} (config source: {MQTT_CONF_SOURCE})")
     print(f"Output: {ENTRIES_FILE}")
     print()
 
@@ -282,6 +309,16 @@ def main():
     # Stop MQTT
     client.loop_stop()
     client.disconnect()
+
+    # 连接结果硬校验：鉴权失败或从未连上时绝不继续写文件
+    if connect_rc is None:
+        print("ERROR: 未收到 CONNACK，连接可能超时或被 broker 拒绝。")
+        print("  现有 entries.json 未修改，脚本以非 0 退出以让 CI 失败可见。")
+        sys.exit(1)
+    if connect_rc != 0:
+        print(f"ERROR: MQTT 鉴权/连接失败 rc={connect_rc}，放弃本轮同步。")
+        print("  请检查 MQTT_USER / MQTT_PASS 是否有效。")
+        sys.exit(1)
 
     # Print collected stats
     print()
