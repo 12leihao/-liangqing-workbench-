@@ -4,6 +4,8 @@ on:
   schedule:
     - cron: "0 */2 * * *"  # 每 2 小时（UTC），GitHub Actions 定时任务
   workflow_dispatch: {}    # 支持手动触发
+  push:
+    branches: [main]       # 推送 main 时同步一次（需 workflow permissions 可写）
 
 permissions: {}
 

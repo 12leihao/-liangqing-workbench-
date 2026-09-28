@@ -343,5 +343,13 @@
   },
   "accounts": {},
   "personal": {},
-  "suggestions": {}
+  "suggestions": {
+    "e2e_probe_20260928": {
+      "id": "e2e_probe_20260928",
+      "content": "【自动化验证标记】这条建议用于检验 GitHub Actions 云端同步链路是否连通 EMQX Cloud，确认后会删除。",
+      "author": "系统自检",
+      "createdAt": "2026-09-28T00:45:00.000Z",
+      "status": "pending"
+    }
+  }
 }
